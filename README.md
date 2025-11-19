@@ -1,28 +1,39 @@
-# graphql_apq_plus
+# graphql_apq_plus — Full version
 
-A small APQ helper module for Drupal 11 GraphQL endpoints.
+This module provides Apollo APQ support for Drupal 11 with Redis-backed storage and an admin UI to view/delete persisted queries.
 
-## Install
+## Installation
 
-1. Place the module in `web/modules/custom/graphql_apq_plus`.
-2. Run `ddev drush en graphql_apq_plus -y` (or enable through UI).
-3. Clear caches: `ddev drush cr`.
+1. Copy this folder to `web/modules/custom/graphql_apq_plus`.
+2. Configure a dedicated cache bin in `settings.php` (example below).
+3. Ensure the Redis module is installed and configured (or your preferred cache backend supports key listing).
+4. Enable the module: `ddev drush en graphql_apq_plus -y`.
+
+## settings.php example (using Redis via redis module)
+
+```php
+// Add the redis services YAML if using contrib redis module (adjust path if needed).
+$settings['container_yamls'][] = DRUPAL_ROOT . '/modules/contrib/redis/redis.services.yml';
+
+// Map custom bin to redis backend
+$settings['cache']['bins']['graphql_apq_plus'] = 'cache.backend.redis';
+
+// Redis connection settings
+$settings['redis.connection']['host'] = '127.0.0.1';
+$settings['redis.connection']['port'] = 6379;
+// If your Redis requires auth or TLS, configure accordingly.
+```
 
 ## How it works
 
-- When the client sends **both** `query` and `extensions.persistedQuery.sha256Hash`, the module stores the mapping in Drupal cache.
-- When the client sends **only** `extensions.persistedQuery.sha256Hash` without `query`, the module injects the stored `query` into the request body before GraphQL handling.
+- Client sends APQ hash (extensions.persistedQuery.sha256Hash). If only hash is provided, this module will attempt to load the stored query and inject it into the request before GraphQL runs.
+- If the client sends the full query with hash, the module stores it in the cache bin for future use.
+
+## Admin UI
+
+Visit: `/admin/config/graphql/apq` to view stored hashes (best-effort listing) and delete entries.
 
 ## Notes
 
-- This module uses `cache.default`. If you use Redis or a dedicated cache bin, change the service injection in `services.yml`.
-- The subscriber listens to requests on paths starting with `/graphql`. If your GraphQL endpoint path differs, adjust the check in `ApqRequestSubscriber::onKernelRequest()`.
-- The module does not perform any signature validation; it trusts the provided hash as an identifier. For production, you may want to validate the hash format (e.g., hex 64-character sha256) and/or limit which clients may register persisted queries.
-- The cache TTL is set to 30 days by default.
-
-## Security & hardening ideas
-
-- Validate `$hash` format (only hex strings of 64 chars).
-- Use a dedicated cache bin (e.g., `cache.graphql_apq`) via service injection.
-- Rate-limit storing operations to avoid cache spam.
-- Optionally require an authorization header to allow registering persisted queries.
+- Listing keys depends on your cache backend. Redis supports scanning; other cache backends may not, which will make the UI only show the 'no keys' message but delete still works if you know the hash.
+- Ensure your Nuxt client uses a HEX-string SHA256 (CryptoJS .toString(encHex)) so hashes match.

@@ -1,0 +1,5 @@
+services:
+  cache.graphql_apq_plus:
+    class: Drupal\Core\Cache\CacheBackendInterface
+    factory: cache_factory:get
+    arguments: ['graphql_apq_plus']

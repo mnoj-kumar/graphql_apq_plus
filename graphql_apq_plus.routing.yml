@@ -1,0 +1,18 @@
+graphql_apq_plus.admin:
+  path: '/admin/config/graphql/apq'
+  defaults:
+    _controller: '\\Drupal\\graphql_apq_plus\\Controller\\ApqAdminController::overview'
+    _title: 'GraphQL APQ storage'
+  requirements:
+    _permission: 'administer graphql apq'
+
+graphql_apq_plus.delete:
+  path: '/admin/config/graphql/apq/delete/{hash}'
+  defaults:
+    _controller: '\\Drupal\\graphql_apq_plus\\Controller\\ApqAdminController::delete'
+  requirements:
+    _permission: 'administer graphql apq'
+  options:
+    parameters:
+      hash:
+        type: 'string'

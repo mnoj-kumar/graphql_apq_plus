@@ -1,10 +1,15 @@
 services:
   graphql_apq_plus.apq_storage:
     class: Drupal\graphql_apq_plus\Service\ApqStorage
-    arguments: ['@cache.default', '@logger.channel.default']
+    arguments: ['@cache.graphql_apq_plus', '@logger.channel.graphql_apq_plus']
+    public: true
 
   graphql_apq_plus.apq_request_subscriber:
     class: Drupal\graphql_apq_plus\EventSubscriber\ApqRequestSubscriber
-    arguments: ['@graphql_apq_plus.apq_storage', '@logger.channel.default']
+    arguments: ['@graphql_apq_plus.apq_storage', '@logger.channel.graphql_apq_plus']
     tags:
       - { name: event_subscriber }
+
+  logger.channel.graphql_apq_plus:
+    class: '\Psr\Log\NullLogger'
+    public: true

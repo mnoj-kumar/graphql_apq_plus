@@ -1,0 +1,4 @@
+administer graphql apq:
+  title: 'Administer GraphQL APQ (view, delete stored queries)'
+  description: 'Allows access to the GraphQL APQ admin UI and management actions.'
+  restrict: true

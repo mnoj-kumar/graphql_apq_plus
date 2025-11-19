@@ -1,5 +1,4 @@
 <?php
-
 namespace Drupal\graphql_apq_plus\EventSubscriber;
 
 use Symfony\Component\HttpKernel\Event\RequestEvent;
@@ -22,7 +21,7 @@ class ApqRequestSubscriber implements EventSubscriberInterface {
   }
 
   public static function getSubscribedEvents() {
-    // Use a high priority so we run before GraphQL request processing.
+    // Priority high to run before GraphQL processing.
     return [
       KernelEvents::REQUEST => ['onKernelRequest', 100],
     ];
@@ -31,13 +30,12 @@ class ApqRequestSubscriber implements EventSubscriberInterface {
   public function onKernelRequest(RequestEvent $event) {
     $request = $event->getRequest();
 
-    // Only handle JSON POST requests to the typical GraphQL endpoint.
+    // Only handle JSON POST requests to GraphQL endpoint.
     if ($request->getMethod() !== 'POST') {
       return;
     }
 
     $path = $request->getPathInfo();
-    // Adjust this if your GraphQL endpoint path differs.
     if (strpos($path, '/graphql') !== 0 && strpos($path, '/graphql/') !== 0) {
       return;
     }
@@ -49,30 +47,31 @@ class ApqRequestSubscriber implements EventSubscriberInterface {
 
     $data = json_decode($content, TRUE);
     if ($data === NULL) {
-      // Not JSON — nothing to do.
       return;
     }
 
     $extensions = $data['extensions'] ?? [];
-    $persisted = $extensions['persistedQuery'] ?? null;
+    $persisted = $extensions['persistedQuery'] ?? NULL;
 
     if (!$persisted || !is_array($persisted)) {
-      // No APQ payload present — nothing to do.
       return;
     }
 
-    // Apollo's field is usually `sha256Hash` (camelCase). Some clients use `hash`.
+    // Apollo uses sha256Hash field.
     $hash = $persisted['sha256Hash'] ?? $persisted['hash'] ?? NULL;
 
-    // Validate hash is a string of expected format (optional weak validation).
     if ($hash !== NULL && !is_string($hash)) {
-      // If it's not a string, log and bail to avoid TypeErrors.
-      $this->logger->warning('APQ: received non-string hash. Ignoring.');
-      return;
+      // If client sent crypto object, try convert to string if possible.
+      if (is_array($hash) && isset($hash['toString'])) {
+        $hash = (string) $hash['toString'];
+      } else {
+        $this->logger->warning('APQ: received non-string hash; ignoring.');
+        return;
+      }
     }
 
     if ($hash !== NULL) {
-      // If full `query` is present, store it.
+      // If the client included the query, store it.
       if (!empty($data['query']) && is_string($data['query'])) {
         try {
           $this->storage->set($hash, $data['query']);
@@ -80,12 +79,11 @@ class ApqRequestSubscriber implements EventSubscriberInterface {
         catch (\Throwable $e) {
           $this->logger->warning('APQ store error: ' . $e->getMessage());
         }
-
-        // No further modification required; let GraphQL handle the request normally.
+        // Let GraphQL process the request normally.
         return;
       }
 
-      // No `query` provided — attempt to retrieve stored query.
+      // Client only provided hash — attempt to load stored query.
       try {
         $stored = $this->storage->get($hash);
       }
@@ -94,26 +92,22 @@ class ApqRequestSubscriber implements EventSubscriberInterface {
         $stored = NULL;
       }
 
-      if ($stored !== NULL) {
-        // Inject the stored query into the request body so GraphQL gets it.
+      if ($stored !== NULL && is_string($stored) && $stored !== '') {
+        // Inject stored query into request body.
         $data['query'] = $stored;
         $newContent = json_encode($data);
         if ($newContent !== FALSE) {
           $request->setContent($newContent);
-
-          // Also update parsed body if GraphQL code reads from it.
           $request->request->replace(is_array($data) ? $data : []);
-
           $this->logger->debug('APQ: Injected stored query for hash ' . substr($hash, 0, 8));
-        }
-        else {
-          $this->logger->warning('APQ: Failed to re-encode request body for hash ' . substr($hash, 0, 8));
+          return;
         }
       }
       else {
-        // Stored query not found — let the GraphQL server return appropriate error.
-        $this->logger->notice('APQ: No stored query found for hash ' . substr($hash, 0, 8));
+        // Not found — let GraphQL server respond with PersistedQueryNotFound.
+        $this->logger->notice('APQ: No stored query found for hash ' . substr((string) $hash, 0, 8));
       }
     }
   }
+
 }
