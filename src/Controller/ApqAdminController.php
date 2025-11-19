@@ -31,7 +31,7 @@ class ApqAdminController {
       $build = [
         '#markup' => Markup::create('<p>No keys available for listing. This page uses a best-effort scan; ensure your cache backend supports key scanning (Redis). You can still delete known hashes through direct URL if you have them.</p>'),
       ];
-n      $build['instructions'] = [
+      $build['instructions'] = [
         '#markup' => Markup::create('<p>To remove a stored hash manually: <code>/admin/config/graphql/apq/delete/{hash}</code></p>'),
       ];
       return $build;
