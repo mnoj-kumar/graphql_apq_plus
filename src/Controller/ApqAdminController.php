@@ -4,18 +4,29 @@ namespace Drupal\graphql_apq_plus\Controller;
 use Drupal\Core\Url;
 use Drupal\Core\Link;
 use Drupal\Core\Render\Markup;
+use Drupal\Core\DependencyInjection\ContainerInjectionInterface;
+use Symfony\Component\DependencyInjection\ContainerInterface;
 use Symfony\Component\HttpFoundation\RedirectResponse;
 use Drupal\graphql_apq_plus\Service\ApqStorage;
 
 /**
  * Simple admin UI to view and manage stored persisted queries.
  */
-class ApqAdminController {
+class ApqAdminController implements ContainerInjectionInterface {
 
-  protected ApqStorage $storage;
+  protected $storage;
 
   public function __construct(ApqStorage $storage) {
     $this->storage = $storage;
+  }
+
+  /**
+   * {@inheritdoc}
+   */
+  public static function create(ContainerInterface $container) {
+    return new static(
+      $container->get('graphql_apq_plus.apq_storage')
+    );
   }
 
   /**
