@@ -3,18 +3,14 @@ services:
     class: Drupal\Core\Cache\CacheBackendInterface
     factory: ['@cache_factory', 'get']
     arguments: ['graphql_apq_plus']
-    
+
   graphql_apq_plus.apq_storage:
     class: Drupal\graphql_apq_plus\Service\ApqStorage
-    arguments: ['@cache.graphql_apq_plus', '@logger.channel.graphql_apq_plus']
+    arguments: ['@cache.graphql_apq_plus', '@logger.channel.default']
     public: true
 
   graphql_apq_plus.apq_request_subscriber:
     class: Drupal\graphql_apq_plus\EventSubscriber\ApqRequestSubscriber
-    arguments: ['@graphql_apq_plus.apq_storage', '@logger.channel.graphql_apq_plus']
+    arguments: ['@graphql_apq_plus.apq_storage', '@logger.channel.default']
     tags:
       - { name: event_subscriber }
-
-  logger.channel.graphql_apq_plus:
-    class: '\Psr\Log\NullLogger'
-    public: true
