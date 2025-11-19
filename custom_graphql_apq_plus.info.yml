@@ -1,8 +1,0 @@
-name: 'Custom GraphQL APQ Plus'
-type: module
-description: 'APQ (Automatic Persisted Queries) with admin UI, Redis support, analytics, per-domain keys, export/import and cleanup for Drupal 11.'
-package: Custom
-core_version_requirement: ^11
-version: 1.0.0
-dependencies:
-  - graphql:graphql

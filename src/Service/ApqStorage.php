@@ -1,147 +1,65 @@
 <?php
-namespace Drupal\custom_graphql_apq_plus\Service;
+
+namespace Drupal\graphql_apq_plus\Service;
 
 use Drupal\Core\Cache\CacheBackendInterface;
-use Drupal\Core\State\StateInterface;
+use Psr\Log\LoggerInterface;
 
+/**
+ * Simple APQ storage using Drupal cache.
+ */
 class ApqStorage {
-
   protected CacheBackendInterface $cache;
-  protected StateInterface $state;
-  protected string $indexKey = 'graphql_apq_index';
+  protected LoggerInterface $logger;
 
-  public function __construct(CacheBackendInterface $cache, StateInterface $state) {
+  // Cache key prefix to avoid collisions.
+  protected string $prefix = 'graphql_apq_plus:';
+
+  public function __construct(CacheBackendInterface $cache, LoggerInterface $logger) {
     $this->cache = $cache;
-    $this->state = $state;
+    $this->logger = $logger;
   }
 
-  protected function getCid(string $hash, string $domain = ''): string {
-    $prefix = 'apq:';
-    if (!empty($domain)) {
-      $prefix .= $domain . ':';
+  /**
+   * Store a query by its hash.
+   *
+   * @param string $hash
+   *   The hash (sha256 hex string or arbitrary identifier).
+   * @param string $query
+   *   Full GraphQL query string.
+   * @param int $ttl
+   *   Time to live in seconds (default 30 days).
+   */
+  public function set(string $hash, string $query, int $ttl = 2592000): void {
+    $key = $this->prefix . $hash;
+    try {
+      $this->cache->set($key, $query, time() + $ttl);
     }
-    return $prefix . $hash;
+    catch (\Throwable $e) {
+      $this->logger->warning('APQ storage set failed: ' . $e->getMessage());
+    }
   }
 
-  public function set(string $hash, string $query, int $ttl = 86400, string $domain = ''): void {
-    $cid = $this->getCid($hash, $domain);
-    $this->cache->set($cid, $query, time() + $ttl);
-    $index = $this->state->get($this->indexKey, []);
-    $key = ($domain ? $domain.':':'') . $hash;
-    if (!isset($index[$key])) {
-      $index[$key] = [
-        'hash' => $hash,
-        'domain' => $domain,
-        'created' => time(),
-        'last_access' => time(),
-        'usage' => 0,
-      ];
+  /**
+   * Get a stored query by its hash.
+   *
+   * @param string $hash
+   *   The hash identifier.
+   *
+   * @return string|null
+   *   The stored query or NULL when not found.
+   */
+  public function get(string $hash): ?string {
+    $key = $this->prefix . $hash;
+    try {
+      $item = $this->cache->get($key);
+      if ($item !== NULL && is_string($item)) {
+        return $item;
+      }
     }
-    else {
-      $index[$key]['last_access'] = time();
-    }
-    $this->state->set($this->indexKey, $index);
-  }
-
-  public function get(string $hash, string $domain = ''): ?string {
-    $cid = $this->getCid($hash, $domain);
-    $item = $this->cache->get($cid);
-    if ($item) {
-      $this->hit($hash, $domain);
-      return $item->data;
+    catch (\Throwable $e) {
+      $this->logger->warning('APQ storage get failed: ' . $e->getMessage());
     }
     return NULL;
-  }
-
-  public function delete(string $hash, string $domain = ''): void {
-    $cid = $this->getCid($hash, $domain);
-    $this->cache->delete($cid);
-    $index = $this->state->get($this->indexKey, []);
-    $key = ($domain ? $domain.':':'') . $hash;
-    if (isset($index[$key])) {
-      unset($index[$key]);
-      $this->state->set($this->indexKey, $index);
-    }
-  }
-
-  protected function hit(string $hash, string $domain = ''): void {
-    $index = $this->state->get($this->indexKey, []);
-    $key = ($domain ? $domain.':':'') . $hash;
-    if (!isset($index[$key])) {
-      $index[$key] = [
-        'hash' => $hash,
-        'domain' => $domain,
-        'created' => time(),
-        'last_access' => time(),
-        'usage' => 1,
-      ];
-    }
-    else {
-      $index[$key]['usage'] = ($index[$key]['usage'] ?? 0) + 1;
-      $index[$key]['last_access'] = time();
-    }
-    $this->state->set($this->indexKey, $index);
-  }
-
-  public function listEntries(string $domain = ''): array {
-    $index = $this->state->get($this->indexKey, []);
-    if ($domain) {
-      $filtered = [];
-      foreach ($index as $k => $meta) {
-        if (($meta['domain'] ?? '') === $domain) {
-          $filtered[$k] = $meta;
-        }
-      }
-      return $filtered;
-    }
-    return $index;
-  }
-
-  public function exportAll(): array {
-    $index = $this->state->get($this->indexKey, []);
-    $export = [];
-    foreach ($index as $key => $meta) {
-      $hash = $meta['hash'];
-      $domain = $meta['domain'] ?? '';
-      $query = $this->get($hash, $domain);
-      if ($query !== NULL) {
-        $export[$key] = ['meta' => $meta, 'query' => $query];
-      }
-    }
-    return $export;
-  }
-
-  public function import(array $data, int $ttl = 86400): int {
-    $count = 0;
-    foreach ($data as $key => $entry) {
-      if (isset($entry['query']) && isset($entry['meta']['hash'])) {
-        $hash = $entry['meta']['hash'];
-        $domain = $entry['meta']['domain'] ?? '';
-        $this->set($hash, $entry['query'], $ttl, $domain);
-        $count++;
-      }
-    }
-    return $count;
-  }
-
-  public function cleanupOlderThan(int $seconds): int {
-    $index = $this->state->get($this->indexKey, []);
-    $now = time();
-    $removed = 0;
-    foreach ($index as $key => $meta) {
-      if (($meta['last_access'] ?? 0) > 0 && ($now - $meta['last_access']) > $seconds) {
-        $parts = explode(':', $key, 2);
-        if (count($parts) == 2) {
-          $domain = $parts[0];
-          $hash = $parts[1];
-        } else {
-          $domain = '';
-          $hash = $key;
-        }
-        $this->delete($hash, $domain);
-        $removed++;
-      }
-    }
-    return $removed;
   }
 }

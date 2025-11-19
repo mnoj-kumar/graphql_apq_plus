@@ -1,6 +1,0 @@
-custom_graphql_apq_plus.apq_admin:
-  title: 'GraphQL APQ'
-  route_name: custom_graphql_apq_plus.overview
-  description: 'Manage Automatic Persisted Queries (APQ)'
-  parent: system.admin_config_development
-  weight: 100

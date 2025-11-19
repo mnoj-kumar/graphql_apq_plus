@@ -1,0 +1,6 @@
+name: 'GraphQL APQ Plus'
+type: module
+description: 'Adds Apollo Automatic Persisted Queries handling for Drupal 11 GraphQL endpoints.'
+core_version_requirement: ^11
+package: Custom
+version: 1.0.0
