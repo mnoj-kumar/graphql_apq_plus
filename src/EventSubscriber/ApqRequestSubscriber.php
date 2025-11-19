@@ -28,74 +28,77 @@ class ApqRequestSubscriber implements EventSubscriberInterface {
 
   public function onKernelRequest(RequestEvent $event) {
     $request = $event->getRequest();
+    try {
+      if ($request->getMethod() !== 'POST') {
+        return;
+      }
 
-    // Only handle POST requests to typical GraphQL endpoint.
-    if ($request->getMethod() !== 'POST') {
-      return;
-    }
+      $path = $request->getPathInfo();
+      if (strpos($path, '/graphql') !== 0 && strpos($path, '/graphql/') !== 0) {
+        return;
+      }
 
-    $path = $request->getPathInfo();
-    if (strpos($path, '/graphql') !== 0 && strpos($path, '/graphql/') !== 0) {
-      return;
-    }
+      $contentType = (string) $request->headers->get('Content-Type', '');
+      if ($contentType === '' || stripos($contentType, 'application/json') === false) {
+        return;
+      }
 
-    $content = $request->getContent();
-    if (empty($content)) {
-      return;
-    }
+      $content = $request->getContent();
+      if ($content === '' || $content === null) {
+        return;
+      }
 
-    $data = json_decode($content, TRUE);
-    if ($data === NULL) {
-      return;
-    }
+      $data = json_decode($content, true);
+      if (!is_array($data) || json_last_error() !== JSON_ERROR_NONE) {
+        return;
+      }
 
-    $extensions = $data['extensions'] ?? [];
-    $persisted = $extensions['persistedQuery'] ?? NULL;
+      $extensions = isset($data['extensions']) && is_array($data['extensions']) ? $data['extensions'] : [];
+      $persisted = isset($extensions['persistedQuery']) && is_array($extensions['persistedQuery']) ? $extensions['persistedQuery'] : null;
+      if (!$persisted) {
+        return;
+      }
 
-    if (!$persisted || !is_array($persisted)) {
-      return;
-    }
+      $hash = $persisted['sha256Hash'] ?? $persisted['hash'] ?? null;
+      if ($hash !== null && !is_string($hash)) {
+        $this->logger->warning('APQ: received non-string hash; ignoring.');
+        return;
+      }
 
-    $hash = $persisted['sha256Hash'] ?? $persisted['hash'] ?? NULL;
+      if ($hash !== null) {
+        if (!empty($data['query']) && is_string($data['query'])) {
+          try {
+            $this->storage->set($hash, $data['query']);
+          }
+          catch (\Throwable $e) {
+            $this->logger->warning('APQ store error: ' . $e->getMessage());
+          }
+          $request->request->replace(is_array($data) ? $data : []);
+          return;
+        }
 
-    if ($hash !== NULL && !is_string($hash)) {
-      $this->logger->warning('APQ: received non-string hash; ignoring.');
-      return;
-    }
-
-    if ($hash !== NULL) {
-      // If client provided the full query, store it.
-      if (!empty($data['query']) && is_string($data['query'])) {
         try {
-          $this->storage->set($hash, $data['query']);
+          $stored = $this->storage->get($hash);
         }
         catch (\Throwable $e) {
-          $this->logger->warning('APQ store error: ' . $e->getMessage());
+          $this->logger->warning('APQ get error: ' . $e->getMessage());
+          $stored = null;
         }
-        // Ensure parsed body is updated for downstream.
-        $request->request->replace(is_array($data) ? $data : []);
-        return;
-      }
 
-      // Client provided only hash - attempt to retrieve stored query.
-      try {
-        $stored = $this->storage->get($hash);
+        if ($stored !== null && is_string($stored) && $stored !== '') {
+          $data['query'] = $stored;
+          $request->request->replace(is_array($data) ? $data : []);
+          $this->logger->debug('APQ: Injected stored query for hash ' . substr($hash, 0, 8));
+          return;
+        }
+        else {
+          $this->logger->notice('APQ: No stored query found for hash ' . substr((string) $hash, 0, 8));
+        }
       }
-      catch (\Throwable $e) {
-        $this->logger->warning('APQ get error: ' . $e->getMessage());
-        $stored = NULL;
-      }
-
-      if ($stored !== NULL && is_string($stored) && $stored !== '') {
-        $data['query'] = $stored;
-        // Replace parsed request body so GraphQL receives the query.
-        $request->request->replace(is_array($data) ? $data : []);
-        $this->logger->debug('APQ: Injected stored query for hash ' . substr($hash, 0, 8));
-        return;
-      }
-      else {
-        $this->logger->notice('APQ: No stored query found for hash ' . substr((string) $hash, 0, 8));
-      }
+    }
+    catch (\Throwable $e) {
+      $this->logger->error('APQ subscriber error: ' . $e->getMessage());
+      return;
     }
   }
 
