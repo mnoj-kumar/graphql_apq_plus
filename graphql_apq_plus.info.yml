@@ -1,7 +1,13 @@
-name: 'GraphQL APQ Plus'
+name: GraphQL APQ Plus
 type: module
-description: 'Apollo Automatic Persisted Queries (APQ) support for Drupal 11 with Redis-backed storage and admin UI.'
-core_version_requirement: ^11
-package: Custom
-version: 1.0.0
-configure: graphql_apq_plus.admin
+description: Enhanced APQ for GraphQL with Redis storage.
+core_version_requirement: ^10 || ^11
+package: GraphQL
+dependencies:
+  - drupal:graphql
+  - drupal:redis
+
+# 👇 ADD THIS
+cache:
+  bins:
+    - graphql_apq_plus

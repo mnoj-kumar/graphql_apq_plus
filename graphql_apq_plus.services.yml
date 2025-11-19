@@ -1,4 +1,9 @@
 services:
+  cache.graphql_apq_plus:
+    class: Drupal\Core\Cache\CacheBackendInterface
+    factory: ['@cache_factory', 'get']
+    arguments: ['graphql_apq_plus']
+    
   graphql_apq_plus.apq_storage:
     class: Drupal\graphql_apq_plus\Service\ApqStorage
     arguments: ['@cache.graphql_apq_plus', '@logger.channel.graphql_apq_plus']
